@@ -7,7 +7,9 @@ authors = [
     { name = "Vincent", email = "git@varmail.org" }
 ]
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "morphemes>=1.2.0",
+]
 
 [project.scripts]
 final-project = "final_project:main"
