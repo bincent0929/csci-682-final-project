@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.14"
 dependencies = [
     "morphemes>=1.2.0",
+    "nltk>=3.10.4",
 ]
 
 [project.scripts]
