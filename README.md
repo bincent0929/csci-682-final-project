@@ -35,21 +35,7 @@ Calling `.parse()` on every word is too slow, so the tokenizer works like this:
 
 ## Setup
 
-The project uses two tools:
-
-- **[uv](https://docs.astral.sh/uv/)** is a fast Python package and project manager (it replaces `pip` and `venv`). It reads the dependencies from `pyproject.toml`, installs the exact versions pinned in `uv.lock` into a local `.venv/`, and runs commands inside it. That way everyone has the same packages.
-- **[Nix](https://nixos.org/)** is a package manager that builds reproducible environments. [flake.nix](flake.nix) describes a dev shell with Python 3.14 and uv, and `flake.lock` pins their exact versions. Nix is optional, but it means you don't have to install Python or uv yourself.
-
-### Option A: Nix (recommended if you have it)
-
-1. [Install Nix](https://nixos.org/download/) and enable flakes. Add `experimental-features = nix-command flakes` to `~/.config/nix/nix.conf`, or use the [Determinate installer](https://determinate.systems/nix-installer/), which turns flakes on by default.
-2. From the repo root, run:
-   ```sh
-   nix develop
-   ```
-   This opens a shell with Python 3.14 and uv, runs `uv sync`, and activates `.venv`. Run it again every time you start working.
-
-### Option B: uv only
+The project uses **[uv](https://docs.astral.sh/uv/)**, a fast Python package and project manager (it replaces `pip` and `venv`). It reads the dependencies from `pyproject.toml`, installs the exact versions pinned in `uv.lock` into a local `.venv/`, and runs commands inside it. That way everyone has the same packages.
 
 1. [Install uv](https://docs.astral.sh/uv/getting-started/installation/), e.g. `curl -LsSf https://astral.sh/uv/install.sh | sh`.
 2. From the repo root, run:
