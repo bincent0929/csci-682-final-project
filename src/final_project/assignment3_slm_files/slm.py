@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import torch
 from final_project.assignment3_slm_files.transformer import TransformerLM
 from final_project.assignment3_slm_files.tinyStoriesPipeline import buildTokenMaps, decode, encode, genBatch, splitStories, toyStories, loadStoriesFromJsonl, learnBPE, tokenizeStories
+from final_project.morpheme_tokenizer import MorphemeTokenizer
 
 ########################
 ### Data Preparation ###
@@ -24,11 +25,9 @@ def prepData(stories: list[str], numMerges: int, bpeTrainStories: int | None, tr
   bpeStories = trainStories
   if bpeTrainStories is not None: bpeStories = trainStories[:bpeTrainStories]
 
-  merges = learnBPE(bpeStories, numMerges)
-
-  # creates tokens from the found merges in the story
-  trainStories_tokens = tokenizeStories(trainStories, merges)
-  validStories_tokens = tokenizeStories(validationStories, merges)
+  morphemeTokenizer = MorphemeTokenizer(str(Path(__file__).resolve().parents[3] / "data"))
+  trainStories_tokens = morphemeTokenizer.tokenize(trainStories)
+  validStories_tokens = morphemeTokenizer.tokenize(validationStories)
 
   # creates a map from the training tokens
   trainToken_map = buildTokenMaps(trainStories_tokens)
