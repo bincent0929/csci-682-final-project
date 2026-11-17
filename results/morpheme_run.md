@@ -1,10 +1,10 @@
 # Morpheme Tokenizer Run
 
 ```sh
-uv run python src/final_project/assignment3_slm_files/slm.py
+uv run python src/final_project/morpheme_slm.py
 ```
 
-This runs on the CPU, even if you have a GPU, so that every run gives exactly the same results. To use a GPU instead, set `deterministic = False` in `main` in `slm.py`.
+This runs on the CPU, even if you have a GPU, so that every run gives exactly the same results. To use a GPU instead, set `deterministic = False` in `main` in `morpheme_slm.py`.
 
 Use this to locally download 1000 tinyStories for the testing:
 ```sh
@@ -16,7 +16,7 @@ You may get an error, but check in the data folder, it may have downloaded anywa
 
 ## Run (November 17, 2026)
 
-This run uses `seed = 123` for every random choice in `slm.py`: the train/validation/test split, the model's starting weights, the training batches, the validation batches, and the sampling of generated text. It runs on the CPU with `torch.use_deterministic_algorithms(True)` (`deterministic = True` in `main`).
+This run uses `seed = 123` for every random choice in `morpheme_slm.py`: the train/validation/test split, the model's starting weights, the training batches, the validation batches, and the sampling of generated text. It runs on the CPU with `torch.use_deterministic_algorithms(True)` (`deterministic = True` in `main`).
 
 **Running it twice gives exactly the same output.** We checked this by diffing the output of two runs. A run takes about 10 seconds on an Apple Silicon CPU.
 
