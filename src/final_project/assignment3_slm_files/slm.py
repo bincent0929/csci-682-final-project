@@ -2,6 +2,7 @@
 # Small Language Model Skeleton
 
 from pathlib import Path
+import random
 # for importing the data for training
 import numpy as np
 import matplotlib.pyplot as plt
@@ -17,9 +18,10 @@ from final_project.morpheme_tokenizer import MorphemeTokenizer
 #numMerges - int - number of BPE merges
 #bpeTrainStories - int or None - number of training stories to use for BPE
 #trainStoryLimit - int or None - number of training stories to keep
+#seed - int - random seed for the train/validation/test split
 #return - encoded training data, encoded validation data, and token maps
-def prepData(stories: list[str], numMerges: int, bpeTrainStories: int | None, trainStoryLimit: int | None) -> tuple[list[list[int]], list[list[int]], dict[str, int], dict[int, str]]:
-  trainStories, validationStories, testStories = splitStories(stories)
+def prepData(stories: list[str], numMerges: int, bpeTrainStories: int | None, trainStoryLimit: int | None, seed: int) -> tuple[list[list[int]], list[list[int]], dict[str, int], dict[int, str]]:
+  trainStories, validationStories, testStories = splitStories(stories, seed=seed)
   if trainStoryLimit is not None: trainStories = trainStories[:trainStoryLimit]
 
   bpeStories = trainStories
@@ -54,9 +56,12 @@ def prepData(stories: list[str], numMerges: int, bpeTrainStories: int | None, tr
 #contextSize - int - context length
 #evalIters - int - number of batches to average over
 #device - torch device - device on which tensors should be stored
+#seed - int - random seed for picking the batches
 #return - float - average loss over sampled batches
-def estimateLoss(model: TransformerLM, data: list[list[int]], batchSize: int, contextSize: int, evalIters: int, device: torch.device) -> float:
-  rng = np.random.default_rng()
+def estimateLoss(model: TransformerLM, data: list[list[int]], batchSize: int, contextSize: int, evalIters: int, device: torch.device, seed: int) -> float:
+  # a fresh generator with the same seed on every call, so each
+  # evaluation scores the model on the same validation batches
+  rng = np.random.default_rng(seed)
   # TransformerLM is a subclass of Torch
   # so the eval method is coming from that.
   model.eval()
@@ -85,10 +90,11 @@ def estimateLoss(model: TransformerLM, data: list[list[int]], batchSize: int, co
 #device - torch device - device on which tensors should be stored
 #evalInterval - int - number of updates between loss estimates
 #evalIters - int - number of batches to average for validation loss
+#seed - int - random seed for picking the batches
 #return - list of dicts - training and validation losses over time
-def train(model: TransformerLM, trainData: list[list[int]], validationData: list[list[int]], steps: int, batchSize: int, contextSize: int, learningRate: float, device: torch.device, evalInterval: int = 100, evalIters: int = 5) -> list[dict[str, float]]:
+def train(model: TransformerLM, trainData: list[list[int]], validationData: list[list[int]], steps: int, batchSize: int, contextSize: int, learningRate: float, device: torch.device, seed: int, evalInterval: int = 100, evalIters: int = 5) -> list[dict[str, float]]:
   optimizer = torch.optim.AdamW(model.parameters(), lr=learningRate)
-  rng = np.random.default_rng(123)
+  rng = np.random.default_rng(seed)
   history: list[dict[str, float]] = []
 
   for step in range(steps):
@@ -110,7 +116,7 @@ def train(model: TransformerLM, trainData: list[list[int]], validationData: list
     optimizer.step()
 
     if step == 0 or (step + 1) % evalInterval == 0:
-      validationLoss = estimateLoss(model, validationData, batchSize, contextSize, evalIters, device)
+      validationLoss = estimateLoss(model, validationData, batchSize, contextSize, evalIters, device, seed)
       
       # step + 1 because it
       # starts at 0
@@ -225,8 +231,23 @@ def runShapeTest() -> None:
 ### Main ###
 ############
 def main() -> None:
-  torch.manual_seed(123)
-  device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+  # one seed for every random choice: the story split, model weight
+  # initialization, training and validation batches, and sampling
+  seed = 123
+  random.seed(seed)
+  np.random.seed(seed)
+  torch.manual_seed(seed)  # also seeds CUDA and MPS
+
+  # GPUs (CUDA, MPS) can add floating point numbers in a different
+  # order on each run, so the losses drift apart after a few hundred
+  # steps even with the same seed. The CPU gives the exact same
+  # numbers every run. Set this to False to train on a GPU instead.
+  deterministic = True
+  if deterministic:
+    device = torch.device("cpu")
+    torch.use_deterministic_algorithms(True)
+  else:
+    device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
 
   dataPath = str(Path(__file__).resolve().parents[2] / "data" / "tinyStories.jsonl")
   maxStories: int = 1000
@@ -259,7 +280,7 @@ def main() -> None:
       if maxStories is not None: stories = stories[:maxStories]
     else: stories = loadStoriesFromJsonl(dataPath, maxStories=maxStories)
 
-    trainStoriesCount, validationStoriesCount, testStoriesCount = splitStories(stories)
+    trainStoriesCount, validationStoriesCount, testStoriesCount = splitStories(stories, seed=seed)
 
     print(f"training stories: {len(trainStoriesCount)}")
     print(f"validation stories: {len(validationStoriesCount)}")
@@ -268,7 +289,8 @@ def main() -> None:
     trainData, validationData, tokenToID, idToToken = prepData(stories,
                                                                numMerges=numMerges,
                                                                bpeTrainStories=bpeTrainStories,
-                                                               trainStoryLimit=trainStories)
+                                                               trainStoryLimit=trainStories,
+                                                               seed=seed)
 
   # Set up the Transformer model
   if True:
@@ -293,6 +315,7 @@ def main() -> None:
                     contextSize=contextSize,
                     learningRate=learningRate,
                     device=device,
+                    seed=seed,
                     evalInterval=evalInterval,
                     evalIters=evalIters)
 
