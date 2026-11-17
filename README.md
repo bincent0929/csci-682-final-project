@@ -25,8 +25,9 @@ The project uses **[uv](https://docs.astral.sh/uv/)**, a fast Python package and
   mkdir -p src/data
   uv run python -c "from final_project.assignment3_slm_files.tinyStoriesPipeline import downloadTinyStoriesPrefix; print(downloadTinyStoriesPrefix('src/data/tinyStories.jsonl', size=10000))"
   ```
-- Train the SLM with the morpheme tokenizer: `uv run python src/final_project/assignment3_slm_files/slm.py`. The first run builds `data/dictionary.json`. The loss plot is saved as `slm_loss.png` in the folder you run it from.
-  > **Note:** The script runs on the **CPU**, even if you have a GPU, so that every run gives exactly the same results (see [Reproducible runs](#reproducible-runs)). A run takes about 10 seconds. To train on a GPU (CUDA or MPS) instead, set `deterministic = False` in `main` in `slm.py`. The results will then vary slightly from run to run.
+- Train the SLM with the morpheme tokenizer: `uv run python src/final_project/morpheme_slm.py`. The first run builds `data/dictionary.json`. The loss plot is saved as `slm_loss.png` in the folder you run it from.
+  > **Note:** The script runs on the **CPU**, even if you have a GPU, so that every run gives exactly the same results (see [Reproducible runs](#reproducible-runs)). A run takes about 10 seconds. To train on a GPU (CUDA or MPS) instead, set `deterministic = False` in `main` in `morpheme_slm.py`. The results will then vary slightly from run to run.
+- Train the original BPE SLM from assignment 3: `uv run python src/final_project/assignment3_slm_files/slm.py`. It is unchanged from the assignment, so it isn't seeded the same way as `morpheme_slm.py`.
 - Add a dependency: `uv add <package>`. This updates both `pyproject.toml` and `uv.lock`, so commit both files.
 
 ## Motivation
@@ -53,23 +54,23 @@ Calling `.parse()` on every word is too slow, so the tokenizer works like this:
 
 ### `MorphemeTokenizer` in the SLM (Harsh, commit `571a2a2`)
 
-`prepData` in [slm.py](src/final_project/assignment3_slm_files/slm.py) now tokenizes with `MorphemeTokenizer` instead of BPE:
+[morpheme_slm.py](src/final_project/morpheme_slm.py) is a copy of the assignment 3 SLM ([slm.py](src/final_project/assignment3_slm_files/slm.py)) whose `prepData` tokenizes with `MorphemeTokenizer` instead of BPE:
 
 ```python
-morphemeTokenizer = MorphemeTokenizer(str(Path(__file__).resolve().parents[3] / "data"))
+morphemeTokenizer = MorphemeTokenizer(str(Path(__file__).resolve().parents[2] / "data"))
 trainStories_tokens = morphemeTokenizer.tokenize(trainStories)
 validStories_tokens = morphemeTokenizer.tokenize(validationStories)
 ```
 
-The rest of the pipeline is unchanged: `buildTokenMaps`, `encode`, `genBatch`, `train`, and `TransformerLM`. The existing `formatSample` already prints morpheme output correctly, because it only joins the tokens, turns `</s>` into a newline, and removes `</w>`, which never appears in morpheme output.
+The rest of the pipeline is unchanged, and `morpheme_slm.py` still imports it from [src/final_project/assignment3_slm_files/](src/final_project/assignment3_slm_files/): `buildTokenMaps`, `encode`, `genBatch`, `train`, and `TransformerLM`. The existing `formatSample` already prints morpheme output correctly, because it only joins the tokens, turns `</s>` into a newline, and removes `</w>`, which never appears in morpheme output.
 
 Current state of the code:
-- **The BPE path was replaced, not kept behind a switch.** `learnBPE` and `tokenizeStories` are still imported, but nothing calls them. The `numMerges` and `bpeTrainStories` arguments to `prepData` are now unused. To get a BPE baseline, we have to go back to the `slm.py` from before `571a2a2`.
-- **The data comes from two different folders.** The morpheme dictionary is read from the repo-root `data/` folder (`parents[3]`). `main` still reads the stories from `src/data/tinyStories.jsonl` (`parents[2]`).
+- **The BPE and morpheme SLMs are two separate scripts.** The files in `assignment3_slm_files/` are back to their original state from the assignment, so [slm.py](src/final_project/assignment3_slm_files/slm.py) is the BPE baseline. `morpheme_slm.py` has no BPE code: the `numMerges` and `bpeTrainStories` settings and the `learnBPE` and `tokenizeStories` imports were removed. The original `slm.py` doesn't use the seed setup described in [Reproducible runs](#reproducible-runs).
+- **The data comes from two different folders.** The morpheme dictionary is read from the repo-root `data/` folder (`parents[2]`). `main` still reads the stories from `src/data/tinyStories.jsonl` (`parents[1]`).
 
 ### Reproducible runs
 
-All random choices in `slm.py` use one seed (`seed = 123` in `main`): the train/validation/test split, the model's starting weights, the training batches, the validation batches, and the sampling of generated text. Every validation estimate uses the same batches, so the validation losses at different steps are measured on the same text.
+All random choices in `morpheme_slm.py` use one seed (`seed = 123` in `main`): the train/validation/test split, the model's starting weights, the training batches, the validation batches, and the sampling of generated text. Every validation estimate uses the same batches, so the validation losses at different steps are measured on the same text.
 
 By default the SLM runs on the CPU with `torch.use_deterministic_algorithms(True)` (`deterministic = True` in `main`). Two runs give exactly the same output. The GPU (CUDA or MPS) isn't reproducible even with the seed: on MPS the losses started to differ by about 0.001 after step 200, because the GPU doesn't always add numbers in the same order. For this small model, the CPU is also slightly faster (about 10 s per run). Set `deterministic = False` to train on a GPU.
 
@@ -102,7 +103,7 @@ What the run showed:
 - Seeded every random choice and made runs reproducible on the CPU (see [Reproducible runs](#reproducible-runs)).
 
 **Next:**
-- Bring back BPE behind a `tokenizer` switch and report bits per character, so the two tokenizers can be compared with the same seed.
+- Seed the BPE baseline the same way as `morpheme_slm.py` and report bits per character for both, so the two tokenizers can be compared with the same seed.
 - Count how many validation tokens become `<unk>`.
 - Look at how the tokenizer splits roots ending in "e" (`scare` + `d` vs. `laugh` + `ed`).
 
