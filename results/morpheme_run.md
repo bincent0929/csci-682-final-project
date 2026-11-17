@@ -4,6 +4,8 @@
 uv run python src/final_project/assignment3_slm_files/slm.py
 ```
 
+This runs on the CPU, even if you have a GPU, so that every run gives exactly the same results. To use a GPU instead, set `deterministic = False` in `main` in `slm.py`.
+
 Use this to locally download 1000 tinyStories for the testing:
 ```sh
 mkdir -p src/data
