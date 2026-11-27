@@ -6,8 +6,8 @@ from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
-from final_project.assignment3_slm_files.transformer import TransformerLM
-from final_project.assignment3_slm_files.tinyStoriesPipeline import buildTokenMaps, decode, encode, genBatch, splitStories, toyStories, loadStoriesFromJsonl, learnBPE, tokenizeStories
+from final_project.Transformer import TransformerLM
+from final_project.TinyStoriesPipeline import buildTokenMaps, decode, encode, genBatch, splitStories, toyStories, loadStoriesFromJsonl, learnBPE, tokenizeStories
 
 ########################
 ### Data Preparation ###
@@ -152,7 +152,7 @@ def plotLosses(history: list[dict[str, float]], outFile: str) -> None:
 #device - torch device - device on which tensors should be stored
 #maxNewTokens - int - number of tokens to generate
 #return - list of strings - decoded generated tokens
-def generateSample(model: TransformerLM, tokenToID: dict[str, int], idToToken: dict[int, str], device: torch.device, maxNewTokens: int = 50) -> list[str]:
+def generateSample(model: TransformerLM, tokenToID: dict[str, int], idToToken: dict[int, str], device: torch.device, maxNewTokens: int = 50, temperature: float = 1.0) -> list[str]:
   startID = tokenToID["<s>"]
   idx = torch.tensor([[startID]], dtype=torch.long, device=device)
 
@@ -160,7 +160,7 @@ def generateSample(model: TransformerLM, tokenToID: dict[str, int], idToToken: d
   # when a back prop
   # is not needed after the result
   with torch.no_grad():
-    generated = model.generate(idx, max_new_tokens=maxNewTokens)
+    generated = model.generate(idx, max_new_tokens=maxNewTokens, temperature=temperature)
 
   # gets the ids that were predicted
   # to come after the given token
@@ -229,23 +229,27 @@ def main() -> None:
   torch.manual_seed(123)
   device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
 
-  dataPath = str(Path(__file__).resolve().parents[2] / "data" / "tinyStories.jsonl")
-  maxStories: int = 1000
+  dataPath = str(Path(__file__).resolve().parents[1] / "data" / "tinyStories.jsonl")
+  maxStories: int = 200000
   trainStories: int | None = None
   numMerges = 200
-  bpeTrainStories: int | None = None
-  steps = 1000
-  batchSize = 16
-  contextSize = 32
-  nEmbed = 64
+  bpeTrainStories: int | None = 2000
+  steps = 20000
+  batchSize = 32
+  contextSize = 128
+  nEmbed = 256
   nHead = 4
-  nLayer = 2
+  nLayer = 4
   learningRate = 1e-3
-  evalInterval = 100
+  evalInterval = 1000
   evalIters = 5
-  plotPath = "slm_loss.png"
+  plotPath = str(Path(__file__).resolve().parents[1] / "plots" / "bpe_loss.png")
+  modelPath = str(Path(__file__).resolve().parents[1] / "models" / "bpe_model.pt")
+  Path(plotPath).parent.mkdir(exist_ok=True)
+  Path(modelPath).parent.mkdir(exist_ok=True)
   maxNewTokens = 50
   numSamples = 5
+  temperature = 0.8
 
   # Check tensor shapes through the TransformerLM architecture
   if False: runShapeTest()
@@ -299,6 +303,14 @@ def main() -> None:
 
     plotLosses(history, plotPath)
 
+    torch.save({"model": model.state_dict(),
+                "tokenToID": tokenToID,
+                "idToToken": idToToken,
+                "settings": {"context_size": contextSize,
+                             "n_embed": nEmbed,
+                             "n_head": nHead,
+                             "n_layer": nLayer}}, modelPath)
+
   # Generate samples from the trained model
   if True:
     for i in range(numSamples):
@@ -307,7 +319,8 @@ def main() -> None:
                               tokenToID,
                               idToToken,
                               device,
-                              maxNewTokens=maxNewTokens)
+                              maxNewTokens=maxNewTokens,
+                              temperature=temperature)
       print(formatSample(sample))
 
 

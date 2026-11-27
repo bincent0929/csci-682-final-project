@@ -1,32 +1,28 @@
 # CSCI 682
-# Small Language Model with the morpheme tokenizer
-# (the SLM from assignment 3, tokenizing with MorphemeTokenizer instead of BPE)
+# Small Language Model Skeleton
 
 from pathlib import Path
-import random
 # for importing the data for training
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
-from final_project.assignment3_slm_files.transformer import TransformerLM
-from final_project.assignment3_slm_files.tinyStoriesPipeline import buildTokenMaps, decode, encode, genBatch, splitStories, toyStories, loadStoriesFromJsonl
-from final_project.morpheme_tokenizer import MorphemeTokenizer
+from final_project.Transformer import TransformerLM
+from final_project.TinyStoriesPipeline import buildTokenMaps, decode, encode, genBatch, splitStories, toyStories, loadStoriesFromJsonl
+from final_project.Morphizer import Morphizer
 
 ########################
 ### Data Preparation ###
 ########################
 #stories - list of strings - story text
 #trainStoryLimit - int or None - number of training stories to keep
-#seed - int - random seed for the train/validation/test split
 #return - encoded training data, encoded validation data, and token maps
-def prepData(stories: list[str], trainStoryLimit: int | None, seed: int) -> tuple[list[list[int]], list[list[int]], dict[str, int], dict[int, str]]:
-  trainStories, validationStories, _ = splitStories(stories, seed=seed)
+def prepData(stories: list[str], trainStoryLimit: int | None) -> tuple[list[list[int]], list[list[int]], dict[str, int], dict[int, str]]:
+  trainStories, validationStories, testStories = splitStories(stories)
   if trainStoryLimit is not None: trainStories = trainStories[:trainStoryLimit]
 
-  # repo-root data/ folder; builds dictionary.json on the first run
-  morphemeTokenizer = MorphemeTokenizer(str(Path(__file__).resolve().parents[2] / "data"))
-  trainStories_tokens = morphemeTokenizer.tokenize(trainStories)
-  validStories_tokens = morphemeTokenizer.tokenize(validationStories)
+  morphizer = Morphizer()
+  trainStories_tokens = morphizer.tokenize(trainStories)
+  validStories_tokens = morphizer.tokenize(validationStories)
 
   # creates a map from the training tokens
   trainToken_map = buildTokenMaps(trainStories_tokens)
@@ -53,12 +49,9 @@ def prepData(stories: list[str], trainStoryLimit: int | None, seed: int) -> tupl
 #contextSize - int - context length
 #evalIters - int - number of batches to average over
 #device - torch device - device on which tensors should be stored
-#seed - int - random seed for picking the batches
 #return - float - average loss over sampled batches
-def estimateLoss(model: TransformerLM, data: list[list[int]], batchSize: int, contextSize: int, evalIters: int, device: torch.device, seed: int) -> float:
-  # a fresh generator with the same seed on every call, so each
-  # evaluation scores the model on the same validation batches
-  rng = np.random.default_rng(seed)
+def estimateLoss(model: TransformerLM, data: list[list[int]], batchSize: int, contextSize: int, evalIters: int, device: torch.device) -> float:
+  rng = np.random.default_rng()
   # TransformerLM is a subclass of Torch
   # so the eval method is coming from that.
   model.eval()
@@ -87,11 +80,10 @@ def estimateLoss(model: TransformerLM, data: list[list[int]], batchSize: int, co
 #device - torch device - device on which tensors should be stored
 #evalInterval - int - number of updates between loss estimates
 #evalIters - int - number of batches to average for validation loss
-#seed - int - random seed for picking the batches
 #return - list of dicts - training and validation losses over time
-def train(model: TransformerLM, trainData: list[list[int]], validationData: list[list[int]], steps: int, batchSize: int, contextSize: int, learningRate: float, device: torch.device, seed: int, evalInterval: int = 100, evalIters: int = 5) -> list[dict[str, float]]:
+def train(model: TransformerLM, trainData: list[list[int]], validationData: list[list[int]], steps: int, batchSize: int, contextSize: int, learningRate: float, device: torch.device, evalInterval: int = 100, evalIters: int = 5) -> list[dict[str, float]]:
   optimizer = torch.optim.AdamW(model.parameters(), lr=learningRate)
-  rng = np.random.default_rng(seed)
+  rng = np.random.default_rng(123)
   history: list[dict[str, float]] = []
 
   for step in range(steps):
@@ -113,7 +105,7 @@ def train(model: TransformerLM, trainData: list[list[int]], validationData: list
     optimizer.step()
 
     if step == 0 or (step + 1) % evalInterval == 0:
-      validationLoss = estimateLoss(model, validationData, batchSize, contextSize, evalIters, device, seed)
+      validationLoss = estimateLoss(model, validationData, batchSize, contextSize, evalIters, device)
       
       # step + 1 because it
       # starts at 0
@@ -154,7 +146,7 @@ def plotLosses(history: list[dict[str, float]], outFile: str) -> None:
 #device - torch device - device on which tensors should be stored
 #maxNewTokens - int - number of tokens to generate
 #return - list of strings - decoded generated tokens
-def generateSample(model: TransformerLM, tokenToID: dict[str, int], idToToken: dict[int, str], device: torch.device, maxNewTokens: int = 50) -> list[str]:
+def generateSample(model: TransformerLM, tokenToID: dict[str, int], idToToken: dict[int, str], device: torch.device, maxNewTokens: int = 50, temperature: float = 1.0) -> list[str]:
   startID = tokenToID["<s>"]
   idx = torch.tensor([[startID]], dtype=torch.long, device=device)
 
@@ -162,7 +154,7 @@ def generateSample(model: TransformerLM, tokenToID: dict[str, int], idToToken: d
   # when a back prop
   # is not needed after the result
   with torch.no_grad():
-    generated = model.generate(idx, max_new_tokens=maxNewTokens)
+    generated = model.generate(idx, max_new_tokens=maxNewTokens, temperature=temperature)
 
   # gets the ids that were predicted
   # to come after the given token
@@ -228,39 +220,28 @@ def runShapeTest() -> None:
 ### Main ###
 ############
 def main() -> None:
-  # one seed for every random choice: the story split, model weight
-  # initialization, training and validation batches, and sampling
-  seed = 123
-  random.seed(seed)
-  np.random.seed(seed)
-  torch.manual_seed(seed)  # also seeds CUDA and MPS
-
-  # GPUs (CUDA, MPS) can add floating point numbers in a different
-  # order on each run, so the losses drift apart after a few hundred
-  # steps even with the same seed. The CPU gives the exact same
-  # numbers every run. Set this to False to train on a GPU instead.
-  deterministic = True
-  if deterministic:
-    device = torch.device("cpu")
-    torch.use_deterministic_algorithms(True)
-  else:
-    device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+  torch.manual_seed(123)
+  device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
 
   dataPath = str(Path(__file__).resolve().parents[1] / "data" / "tinyStories.jsonl")
-  maxStories: int = 1000
+  maxStories: int = 200000
   trainStories: int | None = None
-  steps = 1000
-  batchSize = 16
-  contextSize = 32
-  nEmbed = 64
+  steps = 20000
+  batchSize = 32
+  contextSize = 128
+  nEmbed = 256
   nHead = 4
-  nLayer = 2
+  nLayer = 4
   learningRate = 1e-3
-  evalInterval = 100
+  evalInterval = 1000
   evalIters = 5
-  plotPath = "slm_loss.png"
+  plotPath = str(Path(__file__).resolve().parents[1] / "plots" / "morph_loss.png")
+  modelPath = str(Path(__file__).resolve().parents[1] / "models" / "morph_model.pt")
+  Path(plotPath).parent.mkdir(exist_ok=True)
+  Path(modelPath).parent.mkdir(exist_ok=True)
   maxNewTokens = 50
   numSamples = 5
+  temperature = 0.8
 
   # Check tensor shapes through the TransformerLM architecture
   if False: runShapeTest()
@@ -275,15 +256,14 @@ def main() -> None:
       if maxStories is not None: stories = stories[:maxStories]
     else: stories = loadStoriesFromJsonl(dataPath, maxStories=maxStories)
 
-    trainStoriesCount, validationStoriesCount, testStoriesCount = splitStories(stories, seed=seed)
+    trainStoriesCount, validationStoriesCount, testStoriesCount = splitStories(stories)
 
     print(f"training stories: {len(trainStoriesCount)}")
     print(f"validation stories: {len(validationStoriesCount)}")
     print(f"test stories: {len(testStoriesCount)}")
 
     trainData, validationData, tokenToID, idToToken = prepData(stories,
-                                                               trainStoryLimit=trainStories,
-                                                               seed=seed)
+                                                               trainStoryLimit=trainStories)
 
   # Set up the Transformer model
   if True:
@@ -308,11 +288,18 @@ def main() -> None:
                     contextSize=contextSize,
                     learningRate=learningRate,
                     device=device,
-                    seed=seed,
                     evalInterval=evalInterval,
                     evalIters=evalIters)
 
     plotLosses(history, plotPath)
+
+    torch.save({"model": model.state_dict(),
+                "tokenToID": tokenToID,
+                "idToToken": idToToken,
+                "settings": {"context_size": contextSize,
+                             "n_embed": nEmbed,
+                             "n_head": nHead,
+                             "n_layer": nLayer}}, modelPath)
 
   # Generate samples from the trained model
   if True:
@@ -322,7 +309,8 @@ def main() -> None:
                               tokenToID,
                               idToToken,
                               device,
-                              maxNewTokens=maxNewTokens)
+                              maxNewTokens=maxNewTokens,
+                              temperature=temperature)
       print(formatSample(sample))
 
 
