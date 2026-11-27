@@ -8,22 +8,31 @@ class Morphizer:
   def __init__(self, model="qwen2.5:3b"):
     self.dataPath = Path(__file__).resolve().parents[1] / "data"
     self.dataPath.mkdir(parents=True, exist_ok=True)
-    self.dictPath = self.dataPath / "dictionary.json"
-    self.dictionary = {}
-    if self.dictPath.exists(): self.dictionary = json.loads(self.dictPath.read_text())
-    else: self.buildDict()
+    self.encoderPath = self.dataPath / "dictionary.json"
+    self.encoder = {}
+    self.decoder = {}
+
+    if self.encoderPath.exists(): self.encoder = json.loads(self.encoderPath.read_text())
+    else: self.buildEncoder()
+    self.buildDecoder()
+    
     self.morphs = set()
-    for pieces in self.dictionary.values():
+    for pieces in self.encoder.values():
       if len(pieces) > 1:
         for piece in pieces:
           self.morphs.add(piece)
     self.model = model
-
-  def buildDict(self):
+    
+  def buildEncoder(self):
     for line in (self.dataPath / "morphemepiece.tsv").read_text(encoding="utf-8").splitlines():
       word, morphs = line.split("\t")
-      self.dictionary[word] = morphs.split(" ")
+      self.encoder[word] = morphs.split(" ")
     self.save()
+  def buildDecoder(self):
+    for a, b in self.encoder.items():
+      #if a == "happyness":
+      #  print(a, b)
+      self.decoder[tuple(b)] = a
 
   def handleUndefined(self, word):
     prompt = ("Split each English word into morphemes with +.\n"
@@ -56,20 +65,26 @@ class Morphizer:
     return pieces
 
   def save(self):
-    self.dictPath.write_text(json.dumps(self.dictionary))
+    self.encoderPath.write_text(json.dumps(self.encoder))
 
   def splitWord(self, word):
-    if word.lower() not in self.dictionary: self.dictionary[word.lower()] = self.handleUndefined(word.lower())
-    if "".join(self.dictionary[word.lower()]) != word.lower():
-      pieces = list(self.dictionary[word.lower()])
+    if word.lower() not in self.encoder: self.encoder[word.lower()] = self.handleUndefined(word.lower())
+    if "".join(self.encoder[word.lower()]) != word.lower():
+      pieces = list(self.encoder[word.lower()])
       if word[0].isupper(): pieces[0] = pieces[0].capitalize()
       return pieces
     pieces = []
     start = 0
-    for piece in self.dictionary[word.lower()]:
+    for piece in self.encoder[word.lower()]:
       pieces.append(word[start:start + len(piece)])
       start += len(piece)
     return pieces
+  def recombineWord(self, morphs):
+    key = tuple(morphs)
+    if key in self.decoder:
+      return self.decoder[key]
+    else:
+      return "".join(morphs)
 
   def tokenize(self, texts):
     tokenized = []
@@ -84,3 +99,4 @@ class Morphizer:
       tokenized.append(tokens)
     self.save()
     return tokenized
+  
