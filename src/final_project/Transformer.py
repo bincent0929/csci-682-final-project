@@ -214,12 +214,12 @@ class TransformerLM(nn.Module):
   #idx - tensor - starting token ids with shape B x T
   #max_new_tokens - int - the number of tokens to sample
   #return - tensor - token ids with the sampled tokens appended
-  def generate(self, idx: torch.Tensor, max_new_tokens: int) -> torch.Tensor:
+  def generate(self, idx: torch.Tensor, max_new_tokens: int, temperature: float = 1.0) -> torch.Tensor:
     # Here, we will generate a fixed number of tokens
     for _ in range(max_new_tokens):
       idx_cond = idx[:, -self.context_size :]
       logits, _ = self(idx_cond)
-      logits = logits[:, -1, :]
+      logits = logits[:, -1, :] / temperature
 
       # softmax gives you probabilities that sum
       # to 1 across the vocabulary that will be

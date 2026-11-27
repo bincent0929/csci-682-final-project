@@ -304,7 +304,7 @@ def toyStories() -> list[str]:
 
 #Run the full preprocessing pipeline
 def main() -> None:
-  useToyData = True
+  useToyData = False
   downloadData = False
   maxStories: int | None = None
   numMerges = 200
